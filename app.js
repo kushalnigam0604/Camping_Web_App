@@ -21,7 +21,13 @@ const campgroundRoutes = require('./routes/campgrounds');
 const reviewRoutes = require('./routes/reviews');
 const { index } = require('./controllers/campgrounds');
 
-mongoose.connect('mongodb://localhost:27017/yelp-camp', {
+const MongoStore = require('connect-mongo');
+
+//Our Atlas connection url or localhost
+const dbUrl = process.env.DB_URL || 'mongodb://localhost:27017/yelp-camp';
+
+mongoose.connect(dbUrl
+, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 });
@@ -42,17 +48,37 @@ app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, 'public')))
 
+const secret = process.env.SECRET || 'weshouldhaveabetterstorage';
+
+//Creating Session storage location from mongo connect
+const store = MongoStore.create({
+    mongoUrl: dbUrl,
+    touchAfter: 24 * 3600,
+    crypto: {
+        secret: secret
+    }
+});
+store.on('error', function (e) {
+    console.log("Session Store Error", e)
+});
+
+//Middleware related to cookies and session (Memory packages)
+//As session cookie is defined on the app.js it can be accessed through any route(global cookie) 
 const sessionConfig = {
-    secret: 'thisshouldbeabettersecret!',
-    resave: false,
+    store: store,
+    name: 'session',
+    secret: secret,
+    resave: false, //If there is change in one session variable does it make any change in other (change in onetab no change in other)
     saveUninitialized: true,
     cookie: {
         httpOnly: true,
+        //for https server
+        // secure: true,
+        //1000 milliseconds in a sec * 60 sec in a min * 60 mins in an hour * 24 hours in a day * 7 days a week
         expires: Date.now() + 1000 * 60 * 60 * 24 * 7,
         maxAge: 1000 * 60 * 60 * 24 * 7
     }
 }
-
 app.use(session(sessionConfig))
 app.use(flash());
 
@@ -64,7 +90,6 @@ passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
 app.use((req, res, next) => {
-    console.log(req.session)
     res.locals.currentUser = req.user;
     res.locals.success = req.flash('success');
     res.locals.error = req.flash('error');
@@ -95,7 +120,6 @@ app.use((err, req, res, next) => {
 app.listen(3000, () => {
     console.log('Serving on port 3000')
 })
-
 
 
 
